@@ -426,7 +426,7 @@ draft: %t
 	})
 }
 
-// ======================== 9. 表单参数解析函数（完全复用，无需修改） ========================
+// ======================== 9. 表单参数解析函数 ========================
 func parseFormData(r *http.Request) PostRequest {
 	var req PostRequest
 
@@ -466,7 +466,7 @@ func parseFormData(r *http.Request) PostRequest {
 	return req
 }
 
-// ======================== 10. 工具函数（sendResponse/sanitizeFilename/escapeQuotes，完全复用） ========================
+// ======================== 10. 工具函数 ========================
 func sendResponse(w http.ResponseWriter, statusCode int, resp Response) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(statusCode)
