@@ -13,15 +13,14 @@ import (
 
 // ======================== 1. 配置结构体（新增 hugo_moment_path 字段） ========================
 type Config struct {
-	APIKey          string `json:"api_key"`           // 从config.json读取密钥
-	HugoContentPath string `json:"hugo_content_path"` // 原文章路径（对应/create-post）
-	HugoMomentPath  string `json:"hugo_moment_path"`  // 新增：Moment路径（对应/create-moment）
-	HugoProjectPath string `json:"hugo_project_path"` // Hugo根路径（不变）
-	HugoExecPath    string `json:"hugo_exec_path"`    // Hugo执行路径（不变）
-	ListenAddr      string `json:"listen_addr"`       // 监听地址（不变）
+	APIKey          string `json:"api_key"`
+	HugoContentPath string `json:"hugo_content_path"`
+	HugoMomentPath  string `json:"hugo_moment_path"`
+	HugoProjectPath string `json:"hugo_project_path"`
+	HugoExecPath    string `json:"hugo_exec_path"`
+	ListenAddr      string `json:"listen_addr"`
 }
 
-// 全局配置变量（程序启动时加载config.json）
 var config Config
 
 // ======================== 2. 请求参数结构体（完全复用，无需修改） ========================
@@ -63,7 +62,7 @@ func loadConfig(filePath string) error {
 	if config.HugoContentPath == "" {
 		return fmt.Errorf("config.json中hugo_content_path不能为空（对应/create-post路由）")
 	}
-	if config.HugoMomentPath == "" { // 新增：校验Moment路径
+	if config.HugoMomentPath == "" {
 		return fmt.Errorf("config.json中hugo_moment_path不能为空（对应/create-moment路由）")
 	}
 	if config.HugoProjectPath == "" {
@@ -81,21 +80,21 @@ func main() {
 	}
 
 	// 第二步：注册路由（新增/create-moment路由，复用认证中间件）
-	http.HandleFunc("/api/hugo/create-post", authMiddleware(createPostHandler))     // 原有路由
-	http.HandleFunc("/api/hugo/create-moment", authMiddleware(createMomentHandler)) // 新增路由
+	http.HandleFunc("/api/hugo/create-post", authMiddleware(createPostHandler))
+	http.HandleFunc("/api/hugo/create-moment", authMiddleware(createMomentHandler))
 
 	// 第三步：启动API服务（日志新增Moment路径提示）
 	fmt.Printf("✅ API服务启动成功\n")
 	fmt.Printf("📌 监听地址：%s\n", config.ListenAddr)
 	fmt.Printf("📌 /create-post 文章路径：%s\n", config.HugoContentPath)
-	fmt.Printf("📌 /create-moment 文章路径：%s\n", config.HugoMomentPath) // 新增日志
+	fmt.Printf("📌 /create-moment 文章路径：%s\n", config.HugoMomentPath)
 	if err := http.ListenAndServe(config.ListenAddr, nil); err != nil {
 		fmt.Printf("❌ API启动失败：%v\n", err)
 		os.Exit(1)
 	}
 }
 
-// ======================== 6. 密钥认证中间件（完全复用，无需修改） ========================
+// ======================== 6. 密钥认证中间件========================
 func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// 从请求头或URL参数获取密钥
