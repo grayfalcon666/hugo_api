@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-// ======================== 1. 配置结构体（新增 hugo_moment_path 字段） ========================
+// ======================== 配置结构体（新增 hugo_moment_path 字段） ========================
 type Config struct {
 	APIKey          string `json:"api_key"`
 	HugoContentPath string `json:"hugo_content_path"`
@@ -23,7 +23,7 @@ type Config struct {
 
 var config Config
 
-// ======================== 2. 请求参数结构体（完全复用，无需修改） ========================
+// ======================== 请求参数结构体（完全复用，无需修改） ========================
 type PostRequest struct {
 	Title      string   `json:"title"`      // 是：文章标题（支持中文/特殊字符）
 	Content    string   `json:"content"`    // 是：文章正文（支持Markdown，表单提交时直接复制）
@@ -34,15 +34,23 @@ type PostRequest struct {
 	Date       string   `json:"date"`       // 否：自定义时间（格式2006-01-02 15:04:05）
 }
 
-// ======================== 3. 响应结构体（完全复用，无需修改） ========================
-type Response struct {
+// ======================== 响应结构体（完全复用，无需修改） ========================
+type CreateResponse struct {
 	Status   string `json:"status"`             // success/error
 	Message  string `json:"message"`            // 结果描述
 	Filename string `json:"filename,omitempty"` // 成功时返回文件名
 	Error    string `json:"error,omitempty"`    // 失败时返回错误日志
 }
 
-// ======================== 4. 加载配置文件（新增 hugo_moment_path 校验） ========================
+type ListResponse struct {
+	Status  string   `json:"status"`          // success/error
+	Message string   `json:"message"`         // 结果描述
+	MDFiles []string `json:"md_files"`        // 当前目录下的所有.md文件名
+	DirPath string   `json:"dir_path"`        // 当前读取的目录路径（方便前端核对）
+	Error   string   `json:"error,omitempty"` // 读取目录时的错误信息
+}
+
+// ======================== 加载配置文件（新增 hugo_moment_path 校验） ========================
 func loadConfig(filePath string) error {
 	// 1. 读取config.json文件
 	data, err := os.ReadFile(filePath)
@@ -71,30 +79,34 @@ func loadConfig(filePath string) error {
 	return nil
 }
 
-// ======================== 5. 主函数（新增 /api/hugo/create-moment 路由注册） ========================
+// ======================== 主函数（新增 /api/hugo/create-moment 路由注册） ========================
 func main() {
-	// 第一步：加载config.json（自动读取新增的hugo_moment_path）
+	// 加载config.json（自动读取新增的hugo_moment_path）
 	if err := loadConfig("config.json"); err != nil {
 		fmt.Printf("❌ 配置加载失败：%v\n", err)
 		os.Exit(1)
 	}
 
-	// 第二步：注册路由（新增/create-moment路由，复用认证中间件）
+	// 注册路由
 	http.HandleFunc("/api/hugo/create-post", authMiddleware(createPostHandler))
 	http.HandleFunc("/api/hugo/create-moment", authMiddleware(createMomentHandler))
+	http.HandleFunc("/api/hugo/list-post/post", authMiddleware(listPostContentHandler))
+	http.HandleFunc("/api/hugo/list-post/moment", authMiddleware(listPostMomentHandler))
 
-	// 第三步：启动API服务（日志新增Moment路径提示）
+	// 启动API服务
 	fmt.Printf("✅ API服务启动成功\n")
 	fmt.Printf("📌 监听地址：%s\n", config.ListenAddr)
-	fmt.Printf("📌 /create-post 文章路径：%s\n", config.HugoContentPath)
-	fmt.Printf("📌 /create-moment 文章路径：%s\n", config.HugoMomentPath)
+	fmt.Printf("📌 写路由：/create-post → %s\n", config.HugoContentPath)
+	fmt.Printf("📌 写路由：/create-moment → %s\n", config.HugoMomentPath)
+	fmt.Printf("📌 读路由：/list-post/post → %s\n", config.HugoContentPath)  // 新日志
+	fmt.Printf("📌 读路由：/list-post/moment → %s\n", config.HugoMomentPath) // 新日志
 	if err := http.ListenAndServe(config.ListenAddr, nil); err != nil {
 		fmt.Printf("❌ API启动失败：%v\n", err)
 		os.Exit(1)
 	}
 }
 
-// ======================== 6. 密钥认证中间件========================
+// ======================== 密钥认证中间件========================
 func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// 从请求头或URL参数获取密钥
@@ -105,7 +117,7 @@ func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 
 		// 用config里的密钥校验（非硬编码）
 		if receivedKey != config.APIKey {
-			sendResponse(w, http.StatusUnauthorized, Response{
+			sendResponse(w, http.StatusUnauthorized, CreateResponse{
 				Status:  "error",
 				Message: "无效的API密钥（请检查config.json中的api_key）",
 			})
@@ -116,11 +128,11 @@ func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// ======================== 7. 原有路由处理函数：/api/hugo/create-post（完全不变） ========================
+// ======================== /api/hugo/create-post ========================
 func createPostHandler(w http.ResponseWriter, r *http.Request) {
 	// 仅支持POST请求
 	if r.Method != http.MethodPost {
-		sendResponse(w, http.StatusMethodNotAllowed, Response{
+		sendResponse(w, http.StatusMethodNotAllowed, CreateResponse{
 			Status:  "error",
 			Message: "仅支持POST请求（支持：表单格式/JSON格式）",
 		})
@@ -147,7 +159,7 @@ func createPostHandler(w http.ResponseWriter, r *http.Request) {
 		defer r.Body.Close()
 		err = decoder.Decode(&req)
 	} else {
-		sendResponse(w, http.StatusUnsupportedMediaType, Response{
+		sendResponse(w, http.StatusUnsupportedMediaType, CreateResponse{
 			Status:  "error",
 			Message: "不支持的请求格式（仅支持：multipart/form-data、x-www-form-urlencoded、application/json）",
 		})
@@ -156,7 +168,7 @@ func createPostHandler(w http.ResponseWriter, r *http.Request) {
 
 	// 解析错误处理
 	if err != nil {
-		sendResponse(w, http.StatusBadRequest, Response{
+		sendResponse(w, http.StatusBadRequest, CreateResponse{
 			Status:  "error",
 			Message: "请求参数解析失败",
 			Error:   fmt.Sprintf("错误原因：%v（表单提交时直接复制Markdown即可，无需修改）", err),
@@ -166,18 +178,18 @@ func createPostHandler(w http.ResponseWriter, r *http.Request) {
 
 	// 校验必填参数
 	if req.Title == "" {
-		sendResponse(w, http.StatusBadRequest, Response{Status: "error", Message: "必填参数缺失：title（文章标题）"})
+		sendResponse(w, http.StatusBadRequest, CreateResponse{Status: "error", Message: "必填参数缺失：title（文章标题）"})
 		return
 	}
 	if req.Content == "" {
-		sendResponse(w, http.StatusBadRequest, Response{Status: "error", Message: "必填参数缺失：content（文章正文）"})
+		sendResponse(w, http.StatusBadRequest, CreateResponse{Status: "error", Message: "必填参数缺失：content（文章正文）"})
 		return
 	}
 
 	// 处理时间（中国时区）
 	cstZone, err := time.LoadLocation("Asia/Shanghai")
 	if err != nil {
-		sendResponse(w, http.StatusInternalServerError, Response{
+		sendResponse(w, http.StatusInternalServerError, CreateResponse{
 			Status: "error", Message: "加载北京时间时区失败", Error: fmt.Sprintf("错误原因：%v", err),
 		})
 		return
@@ -186,7 +198,7 @@ func createPostHandler(w http.ResponseWriter, r *http.Request) {
 	if req.Date != "" {
 		postDate, err = time.ParseInLocation("2006-01-02 15:04:05", req.Date, cstZone)
 		if err != nil {
-			sendResponse(w, http.StatusBadRequest, Response{
+			sendResponse(w, http.StatusBadRequest, CreateResponse{
 				Status: "error", Message: "date参数格式错误", Error: fmt.Sprintf("正确格式：2006-01-02 15:04:05，错误原因：%v", err),
 			})
 			return
@@ -246,7 +258,7 @@ draft: %t
 	// 保存文章
 	fullContent := frontMatter + req.Content
 	if err := os.WriteFile(savePath, []byte(fullContent), 0644); err != nil {
-		sendResponse(w, http.StatusInternalServerError, Response{
+		sendResponse(w, http.StatusInternalServerError, CreateResponse{
 			Status: "error", Message: "保存文章失败", Error: fmt.Sprintf("错误原因：%v（检查%s权限）", err, config.HugoContentPath),
 		})
 		return
@@ -258,7 +270,7 @@ draft: %t
 	hugoCmd.Dir = config.HugoProjectPath
 	hugoOutput, err := hugoCmd.CombinedOutput()
 	if err != nil {
-		sendResponse(w, http.StatusInternalServerError, Response{
+		sendResponse(w, http.StatusInternalServerError, CreateResponse{
 			Status: "error", Message: "Hugo构建失败", Error: fmt.Sprintf("构建日志：%s，错误原因：%v", string(hugoOutput), err),
 		})
 		return
@@ -266,16 +278,16 @@ draft: %t
 	fmt.Printf("✅ Hugo构建成功：%s\n", string(hugoOutput))
 
 	// 返回成功响应
-	sendResponse(w, http.StatusOK, Response{
+	sendResponse(w, http.StatusOK, CreateResponse{
 		Status: "success", Message: "文章创建并发布成功（/create-post）", Filename: filename,
 	})
 }
 
-// ======================== 8. 新增路由处理函数：/api/hugo/create-moment（仅改保存路径） ========================
+// ======================== /api/hugo/create-moment ========================
 func createMomentHandler(w http.ResponseWriter, r *http.Request) {
 	// ------------ 以下逻辑与createPostHandler完全一致，仅最后保存路径改为 hugo_moment_path ------------
 	if r.Method != http.MethodPost {
-		sendResponse(w, http.StatusMethodNotAllowed, Response{
+		sendResponse(w, http.StatusMethodNotAllowed, CreateResponse{
 			Status:  "error",
 			Message: "仅支持POST请求（支持：表单格式/JSON格式）",
 		})
@@ -301,7 +313,7 @@ func createMomentHandler(w http.ResponseWriter, r *http.Request) {
 		defer r.Body.Close()
 		err = decoder.Decode(&req)
 	} else {
-		sendResponse(w, http.StatusUnsupportedMediaType, Response{
+		sendResponse(w, http.StatusUnsupportedMediaType, CreateResponse{
 			Status:  "error",
 			Message: "不支持的请求格式（仅支持：multipart/form-data、x-www-form-urlencoded、application/json）",
 		})
@@ -309,7 +321,7 @@ func createMomentHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err != nil {
-		sendResponse(w, http.StatusBadRequest, Response{
+		sendResponse(w, http.StatusBadRequest, CreateResponse{
 			Status:  "error",
 			Message: "请求参数解析失败",
 			Error:   fmt.Sprintf("错误原因：%v（表单提交时直接复制Markdown即可，无需修改）", err),
@@ -318,18 +330,18 @@ func createMomentHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.Title == "" {
-		sendResponse(w, http.StatusBadRequest, Response{Status: "error", Message: "必填参数缺失：title（文章标题）"})
+		sendResponse(w, http.StatusBadRequest, CreateResponse{Status: "error", Message: "必填参数缺失：title（文章标题）"})
 		return
 	}
 	if req.Content == "" {
-		sendResponse(w, http.StatusBadRequest, Response{Status: "error", Message: "必填参数缺失：content（文章正文）"})
+		sendResponse(w, http.StatusBadRequest, CreateResponse{Status: "error", Message: "必填参数缺失：content（文章正文）"})
 		return
 	}
 
 	// 处理时间（与原有逻辑一致）
 	cstZone, err := time.LoadLocation("Asia/Shanghai")
 	if err != nil {
-		sendResponse(w, http.StatusInternalServerError, Response{
+		sendResponse(w, http.StatusInternalServerError, CreateResponse{
 			Status: "error", Message: "加载北京时间时区失败", Error: fmt.Sprintf("错误原因：%v", err),
 		})
 		return
@@ -338,7 +350,7 @@ func createMomentHandler(w http.ResponseWriter, r *http.Request) {
 	if req.Date != "" {
 		postDate, err = time.ParseInLocation("2006-01-02 15:04:05", req.Date, cstZone)
 		if err != nil {
-			sendResponse(w, http.StatusBadRequest, Response{
+			sendResponse(w, http.StatusBadRequest, CreateResponse{
 				Status: "error", Message: "date参数格式错误", Error: fmt.Sprintf("正确格式：2006-01-02 15:04:05，错误原因：%v", err),
 			})
 			return
@@ -399,7 +411,7 @@ draft: %t
 	// 保存文章（路径已改为Moment路径）
 	fullContent := frontMatter + req.Content
 	if err := os.WriteFile(savePath, []byte(fullContent), 0644); err != nil {
-		sendResponse(w, http.StatusInternalServerError, Response{
+		sendResponse(w, http.StatusInternalServerError, CreateResponse{
 			// 错误提示同步改为Moment路径
 			Status: "error", Message: "保存文章失败", Error: fmt.Sprintf("错误原因：%v（检查%s权限）", err, config.HugoMomentPath),
 		})
@@ -412,7 +424,7 @@ draft: %t
 	hugoCmd.Dir = config.HugoProjectPath
 	hugoOutput, err := hugoCmd.CombinedOutput()
 	if err != nil {
-		sendResponse(w, http.StatusInternalServerError, Response{
+		sendResponse(w, http.StatusInternalServerError, CreateResponse{
 			Status: "error", Message: "Hugo构建失败", Error: fmt.Sprintf("构建日志：%s，错误原因：%v", string(hugoOutput), err),
 		})
 		return
@@ -420,12 +432,89 @@ draft: %t
 	fmt.Printf("✅ Hugo构建成功：%s\n", string(hugoOutput))
 
 	// 返回成功响应（提示改为/create-moment）
-	sendResponse(w, http.StatusOK, Response{
+	sendResponse(w, http.StatusOK, CreateResponse{
 		Status: "success", Message: "文章创建并发布成功（/create-moment）", Filename: filename,
 	})
 }
 
-// ======================== 9. 表单参数解析函数 ========================
+// ======================== /api/hugo/list-post/post ========================
+func listPostContentHandler(w http.ResponseWriter, r *http.Request) {
+	// 仅支持GET请求（获取资源用GET，符合RESTful）
+	if r.Method != http.MethodGet {
+		sendResponse(w, http.StatusMethodNotAllowed, CreateResponse{
+			Status:  "error",
+			Message: "仅支持GET请求（用于获取 hugo_content_path 下的.md文件名）",
+		})
+		return
+	}
+
+	// 读取配置中的 hugo_content_path 目录
+	targetDir := config.HugoContentPath
+	mdFiles, err := listMDFileNames(targetDir)
+
+	// 构建响应
+	resp := ListResponse{
+		DirPath: targetDir, // 明确返回当前读取的目录
+	}
+	if err != nil {
+		// 读取失败：返回错误状态和原因
+		resp.Status = "error"
+		resp.Message = "读取文章目录失败"
+		resp.Error = err.Error()
+		// 根据错误类型返回对应HTTP状态码（更精准）
+		if strings.Contains(err.Error(), "目录不存在") {
+			sendResponse(w, http.StatusNotFound, resp)
+		} else {
+			sendResponse(w, http.StatusInternalServerError, resp)
+		}
+		return
+	}
+
+	// 读取成功：返回文件列表
+	resp.Status = "success"
+	resp.Message = fmt.Sprintf("成功获取 %s 下的.md文件（共%d个）", targetDir, len(mdFiles))
+	resp.MDFiles = mdFiles
+	sendResponse(w, http.StatusOK, resp)
+}
+
+// ======================== /api/hugo/list-post/moment ========================
+func listPostMomentHandler(w http.ResponseWriter, r *http.Request) {
+	// 仅支持GET请求
+	if r.Method != http.MethodGet {
+		sendResponse(w, http.StatusMethodNotAllowed, CreateResponse{
+			Status:  "error",
+			Message: "仅支持GET请求（用于获取 hugo_moment_path 下的.md文件名）",
+		})
+		return
+	}
+
+	// 读取配置中的 hugo_moment_path 目录
+	targetDir := config.HugoMomentPath
+	mdFiles, err := listMDFileNames(targetDir)
+
+	// 构建响应（逻辑与上一个函数一致，仅目录不同）
+	resp := ListResponse{
+		DirPath: targetDir,
+	}
+	if err != nil {
+		resp.Status = "error"
+		resp.Message = "读取动态/瞬间目录失败"
+		resp.Error = err.Error()
+		if strings.Contains(err.Error(), "目录不存在") {
+			sendResponse(w, http.StatusNotFound, resp)
+		} else {
+			sendResponse(w, http.StatusInternalServerError, resp)
+		}
+		return
+	}
+
+	resp.Status = "success"
+	resp.Message = fmt.Sprintf("成功获取 %s 下的.md文件（共%d个）", targetDir, len(mdFiles))
+	resp.MDFiles = mdFiles
+	sendResponse(w, http.StatusOK, resp)
+}
+
+// ======================== 表单参数解析函数 ========================
 func parseFormData(r *http.Request) PostRequest {
 	var req PostRequest
 
@@ -465,8 +554,8 @@ func parseFormData(r *http.Request) PostRequest {
 	return req
 }
 
-// ======================== 10. 工具函数 ========================
-func sendResponse(w http.ResponseWriter, statusCode int, resp Response) {
+// ======================== 工具函数（新增读取.md文件列表函数） ========================
+func sendResponse(w http.ResponseWriter, statusCode int, resp interface{}) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(statusCode)
 	_ = json.NewEncoder(w).Encode(resp)
@@ -496,4 +585,37 @@ func sanitizeFilename(name string) string {
 
 func escapeQuotes(s string) string {
 	return strings.ReplaceAll(s, "\"", "\\\"")
+}
+
+// listMDFileNames 读取指定目录下所有.md文件的文件名（新增）
+func listMDFileNames(dirPath string) ([]string, error) {
+	// 1. 检查目录是否存在
+	dirInfo, err := os.Stat(dirPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("目录不存在：%s", dirPath)
+		}
+		return nil, fmt.Errorf("访问目录失败：%s（错误：%v）", dirPath, err)
+	}
+
+	// 2. 确认是目录（不是文件）
+	if !dirInfo.IsDir() {
+		return nil, fmt.Errorf("%s 不是有效目录（是文件）", dirPath)
+	}
+
+	// 3. 读取目录下所有条目，筛选.md文件
+	entries, err := os.ReadDir(dirPath)
+	if err != nil {
+		return nil, fmt.Errorf("读取目录 %s 失败（错误：%v）", dirPath, err)
+	}
+
+	var mdFiles []string
+	for _, entry := range entries {
+		// 仅处理文件（排除子目录），且后缀为.md（不区分大小写）
+		if !entry.IsDir() && strings.ToLower(filepath.Ext(entry.Name())) == ".md" {
+			mdFiles = append(mdFiles, entry.Name()) // 仅保留文件名（不含路径）
+		}
+	}
+
+	return mdFiles, nil
 }
