@@ -1,3 +1,6 @@
+//模块作用：
+//处理所有核心业务逻辑
+
 package handler
 
 import (
@@ -163,7 +166,6 @@ func parseRequest(r *http.Request) (*PostRequest, *APIError) {
 	contentType := r.Header.Get("Content-Type")
 	var err error
 
-	// ======================== FIX START ========================
 	// 恢复对不同表单类型的判断
 	if strings.Contains(contentType, "application/json") {
 		if err = json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -182,7 +184,6 @@ func parseRequest(r *http.Request) (*PostRequest, *APIError) {
 		}
 		req = parseFormData(r)
 	}
-	// ========================= FIX END =========================
 
 	return &req, nil
 }
@@ -190,7 +191,7 @@ func parseRequest(r *http.Request) (*PostRequest, *APIError) {
 // parseFormData 从表单数据中提取信息
 func parseFormData(r *http.Request) PostRequest {
 	var req PostRequest
-	// r.FormValue 会智能地从 URL 参数和已解析的表单体中获取值
+	// r.FormValue 智能地从 URL 参数和已解析的表单体中获取值
 	req.Title = r.FormValue("title")
 	req.Content = r.FormValue("content")
 	req.Filename = r.FormValue("filename")

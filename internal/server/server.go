@@ -1,3 +1,8 @@
+// 模块作用:
+// 负责所有与 HTTP 服务器直接相关的工作。
+// 路由注册：定义每个URL路径应该由哪个处理器函数来处理。
+// 中间件 (Middleware)：管理像 authMiddleware 这样的通用功能。所有发往特定路由的请求都必须先通过它。
+
 package server
 
 import (
