@@ -1,9 +1,13 @@
+//模块作用：
+//处理所有核心业务逻辑
+
 package handler
 
 import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -145,6 +149,81 @@ func ListMomentHandler(w http.ResponseWriter, r *http.Request) {
 	listContentHandler(w, r, "moment")
 }
 
+// GetPostHandler 专门处理 /get-post 请求
+func GetPostHandler(w http.ResponseWriter, r *http.Request) {
+	// 检查方法是否为 POST
+	if r.Method != http.MethodPost {
+		http.Error(w, "仅支持POST请求", http.StatusMethodNotAllowed)
+		return
+	}
+	getContentHandler(w, r, "post")
+}
+
+// GetMomentHandler 专门处理 /get-moment 请求
+func GetMomentHandler(w http.ResponseWriter, r *http.Request) {
+	// 检查方法是否为 POST
+	if r.Method != http.MethodPost {
+		http.Error(w, "仅支持POST请求", http.StatusMethodNotAllowed)
+		return
+	}
+	getContentHandler(w, r, "moment")
+}
+
+// getContentHandler 是一个通用的内容获取处理器
+func getContentHandler(w http.ResponseWriter, r *http.Request, contentType string) {
+	// 1. 解析表单，支持 multipart/form-data 和 x-www-form-urlencoded
+	// (这部分逻辑与 create-post 类似)
+	err := r.ParseMultipartForm(10 << 20) // 10MB 内存限制
+	if err != nil {
+		// 如果不是 multipart 类型，ParseMultipartForm 会报错，
+		// 我们可以忽略这个错误，尝试用 ParseForm
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "解析表单失败: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
+
+	// 2. 从解析后的表单中获取文件名
+	// r.FormValue 会智能地处理两种表单类型
+	filename := r.FormValue("filename")
+	if filename == "" {
+		http.Error(w, "表单参数 'filename' 不能为空", http.StatusBadRequest)
+		return
+	}
+
+	// 3. 安全性检查：防止目录遍历攻击 (e.g., ?filename=../../secret.txt)
+	cleanFilename := filepath.Base(filename)
+	if cleanFilename != filename {
+		http.Error(w, "无效的文件名", http.StatusBadRequest)
+		return
+	}
+
+	// 4. 确定目标目录
+	var targetDir string
+	if contentType == "post" {
+		targetDir = config.Cfg.HugoContentPath
+	} else {
+		targetDir = config.Cfg.HugoMomentPath
+	}
+	filePath := filepath.Join(targetDir, cleanFilename)
+
+	// 5. 读取文件内容
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			http.Error(w, "文件未找到: "+cleanFilename, http.StatusNotFound)
+		} else {
+			http.Error(w, "读取文件失败", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	// 6. 返回纯文本响应
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	w.Write(content)
+}
+
 // --- 辅助函数 ---
 
 // APIError 封装了带有状态码的错误信息
@@ -163,7 +242,6 @@ func parseRequest(r *http.Request) (*PostRequest, *APIError) {
 	contentType := r.Header.Get("Content-Type")
 	var err error
 
-	// ======================== FIX START ========================
 	// 恢复对不同表单类型的判断
 	if strings.Contains(contentType, "application/json") {
 		if err = json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -182,7 +260,6 @@ func parseRequest(r *http.Request) (*PostRequest, *APIError) {
 		}
 		req = parseFormData(r)
 	}
-	// ========================= FIX END =========================
 
 	return &req, nil
 }
@@ -190,7 +267,7 @@ func parseRequest(r *http.Request) (*PostRequest, *APIError) {
 // parseFormData 从表单数据中提取信息
 func parseFormData(r *http.Request) PostRequest {
 	var req PostRequest
-	// r.FormValue 会智能地从 URL 参数和已解析的表单体中获取值
+	// r.FormValue 智能地从 URL 参数和已解析的表单体中获取值
 	req.Title = r.FormValue("title")
 	req.Content = r.FormValue("content")
 	req.Filename = r.FormValue("filename")
