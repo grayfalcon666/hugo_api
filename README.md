@@ -123,11 +123,4 @@ curl -X POST http://localhost:8080/api/hugo/create-post \
 [MIT License](https://opensource.org/licenses/MIT)允许自由使用、修改和分发，仅需保留原作者版权声明。
 
 
-- **2025-10-08 23:30:09更新**：新增/api/hugo/list-post/post 与 /api/hugo/list-post/moment 查询md文件列表
-
-- **2025-10-10 01:05:34更新**：
-进行以下重构：
-关注点分离 
-可维护性
-可测试性
-遵循社区规范
+2025-10-08 23:30:09更新：新增/api/hugo/list-post/post 与 /api/hugo/list-post/moment 查询md文件列表

@@ -1,6 +1,3 @@
-// 模块作用:
-// 提供统一的 JSON 响应结构体 和发送函数
-
 package response
 
 import (
@@ -8,6 +5,7 @@ import (
 	"net/http"
 )
 
+// CreateResponse 用于创建操作的响应
 type CreateResponse struct {
 	Status   string `json:"status"`             // "success" 或 "error"
 	Message  string `json:"message"`            // 结果描述
@@ -15,6 +13,7 @@ type CreateResponse struct {
 	Error    string `json:"error,omitempty"`    // 失败时返回错误日志
 }
 
+// ListResponse 用于列出文件的响应
 type ListResponse struct {
 	Status  string   `json:"status"`          // "success" 或 "error"
 	Message string   `json:"message"`         // 结果描述

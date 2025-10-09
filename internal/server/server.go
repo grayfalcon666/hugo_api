@@ -1,8 +1,3 @@
-// 模块作用:
-// 负责所有与 HTTP 服务器直接相关的工作。
-// 路由注册：定义每个URL路径应该由哪个处理器函数来处理。
-// 中间件 (Middleware)：管理像 authMiddleware 这样的通用功能。所有发往特定路由的请求都必须先通过它。
-
 package server
 
 import (
@@ -35,23 +30,19 @@ func RegisterRoutes() {
 	http.HandleFunc("/api/hugo/create-post", authMiddleware(handler.CreatePostHandler))
 	http.HandleFunc("/api/hugo/create-moment", authMiddleware(handler.CreateMomentHandler))
 
-	// 查询列表
+	// 列出内容
 	http.HandleFunc("/api/hugo/list-post/post", authMiddleware(handler.ListPostHandler))
 	http.HandleFunc("/api/hugo/list-post/moment", authMiddleware(handler.ListMomentHandler))
-
-	// 获取指定内容
-	http.HandleFunc("/api/hugo/get-post", authMiddleware(handler.GetPostHandler))
-	http.HandleFunc("/api/hugo/get-moment", authMiddleware(handler.GetMomentHandler))
 }
 
 // Start 启动 API 服务
 func Start() error {
 	fmt.Println("✅ API服务启动成功")
 	fmt.Printf("📌 监听地址：%s\n", config.Cfg.ListenAddr)
-	fmt.Printf("📌 发布内容 (/create-post)\n")
-	fmt.Printf("📌 列表查询 (/list-post/post)\n")
-	fmt.Printf("📌 内容查询 (/get-post/post)\n")
-	fmt.Printf("末尾换成moment即可对动态进行同等操作\n")
+	fmt.Printf("📌 文章写入路径 (/create-post): %s\n", config.Cfg.HugoContentPath)
+	fmt.Printf("📌 动态写入路径 (/create-moment): %s\n", config.Cfg.HugoMomentPath)
+	fmt.Printf("📌 文章读取路径 (/list-post/post): %s\n", config.Cfg.HugoContentPath)
+	fmt.Printf("📌 动态读取路径 (/list-post/moment): %s\n", config.Cfg.HugoMomentPath)
 
 	return http.ListenAndServe(config.Cfg.ListenAddr, nil)
 }

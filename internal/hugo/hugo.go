@@ -1,7 +1,3 @@
-// 模块作用:
-// 封装所有与 Hugo 直接交互的操作
-// handler 模块不关心 Hugo 命令具体是什么，它只需要调用 hugo.BuildSite() 这个函数，就像调用一个服务一样
-
 package hugo
 
 import (
@@ -10,7 +6,7 @@ import (
 	"os/exec"
 	"time"
 
-	"hugo-api/internal/utils"
+	"hugo-api/internal/utils" // 引入我们自己的工具包
 )
 
 // GenerateFrontMatter 根据文章数据生成 Hugo 的 Front Matter
